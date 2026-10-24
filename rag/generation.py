@@ -8,10 +8,14 @@ from . import config
 
 # Prompt curto de propósito: o Gemma 2B se confunde com instruções longas e
 # exemplos (few-shot) e passa a responder que "o contexto não tem a informação".
+# A linha "If the context only partly answers it..." reduziu essas recusas
+# quando os trechos cobrem só parte da resposta.
 BASE_PROMPT = """Context:
 {context}
 
 Using the context above, answer the question in a clear and explanatory way.
+If the context only partly answers it, explain what the context does say.
+Answer in the same language as the question.
 Question: {query}"""
 
 

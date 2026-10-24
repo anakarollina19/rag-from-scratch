@@ -1,25 +1,35 @@
 """Junta as 4 etapas num objeto só, usado pela CLI (main.py) e pela interface web (app.py)."""
 from . import config
-from .embeddings import build_index, index_path_for, load_embedding_model, load_index
+from .embeddings import Embedder, build_index, index_path_for, load_index
 from .ingest import chunk_pages, open_and_read_pdf
-from .retrieval import retrieve
+from .retrieval import Reranker, retrieve
 
 
 class RAG:
-    def __init__(self):
+    def __init__(self, embedding_model: str = config.EMBEDDING_MODEL,
+                 rerank: bool = config.RERANK):
         # Os modelos são carregados só quando necessários: o embedding é leve,
         # mas o Gemma ocupa ~10 GB de RAM e leva um tempo para carregar.
-        self._embedding_model = None
+        self.embedding_model = embedding_model
+        self.rerank = rerank
+        self._embedders: dict[str, Embedder] = {}
+        self._reranker = None
         self._generator = None
         self.chunks: list[dict] = []
         self.embeddings = None
         self.index_path = ""
+        self.index_model = ""  # modelo com que o índice ativo foi construído
+
+    def embedder(self, model_name: str) -> Embedder:
+        if model_name not in self._embedders:
+            self._embedders[model_name] = Embedder(model_name)
+        return self._embedders[model_name]
 
     @property
-    def embedding_model(self):
-        if self._embedding_model is None:
-            self._embedding_model = load_embedding_model()
-        return self._embedding_model
+    def reranker(self) -> Reranker:
+        if self._reranker is None:
+            self._reranker = Reranker()
+        return self._reranker
 
     @property
     def generator(self):
@@ -35,20 +45,23 @@ class RAG:
         pdf_path = str(pdf_path)
         chunks = chunk_pages(open_and_read_pdf(pdf_path, page_offset))
         path = index_path_for(pdf_path)
-        build_index(chunks, self.embedding_model, path, source=pdf_path)
+        build_index(chunks, self.embedder(self.embedding_model), path, source=pdf_path)
         self.load(path)
         return path
 
     def load(self, index_path: str) -> None:
-        self.chunks, self.embeddings = load_index(index_path)
+        self.chunks, self.embeddings, self.index_model = load_index(index_path)
         self.index_path = index_path
 
     def search(self, query: str, k: int = config.TOP_K) -> list[dict]:
-        """Retorna os k chunks mais parecidos, cada um com seu score."""
+        """Retorna os k chunks mais relevantes, cada um com seu score."""
         if self.embeddings is None:
             raise RuntimeError("Nenhum índice carregado. Rode `build` ou envie um PDF.")
-        scores, indices = retrieve(query, self.embedding_model, self.embeddings, k)
-        return [{**self.chunks[i], "score": float(s)} for s, i in zip(scores, indices)]
+        # a pergunta precisa ser codificada com o mesmo modelo que gerou o índice
+        n = max(k, config.RERANK_CANDIDATES) if self.rerank else k
+        scores, indices = retrieve(query, self.embedder(self.index_model), self.embeddings, n)
+        found = [{**self.chunks[i], "score": float(s)} for s, i in zip(scores, indices)]
+        return self.reranker.rerank(query, found, k) if self.rerank else found
 
     def ask(self, query: str, k: int = config.TOP_K) -> tuple[str, list[dict]]:
         """Busca + geração. Retorna (resposta, trechos usados)."""

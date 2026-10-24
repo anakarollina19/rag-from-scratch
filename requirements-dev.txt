@@ -1,0 +1,3 @@
+# Só para gravar o GIF do README (scripts/record_demo.py)
+-r requirements.txt
+playwright>=1.40

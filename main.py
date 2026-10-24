@@ -36,7 +36,8 @@ def load_index_or_exit(args, rag: RAG):
 def print_sources(chunks: list[dict], full_text: bool = False):
     for c in chunks:
         text = c["sentence_chunk"] if full_text else c["sentence_chunk"][:120] + "..."
-        print(f"  [p. {c['page_number']}] score={c['score']:.3f} {text}")
+        rerank = f" rerank={c['rerank_score']:.2f}" if "rerank_score" in c else ""
+        print(f"  [p. {c['page_number']}] score={c['score']:.3f}{rerank} {text}")
 
 
 def cmd_search(args, rag: RAG):
@@ -67,6 +68,8 @@ def main():
     build.add_argument("pdf", nargs="?", help="caminho do PDF (padrão: livro de exemplo)")
     build.add_argument("--page-offset", type=int, default=0,
                        help="páginas iniciais a descontar na numeração (capa, sumário...)")
+    build.add_argument("--model", default=config.EMBEDDING_MODEL,
+                       choices=list(config.EMBEDDING_MODELS), help="modelo de embedding")
 
     for name in ("search", "ask", "chat"):
         p = sub.add_parser(name)
@@ -75,9 +78,12 @@ def main():
         p.add_argument("-k", type=int, default=config.TOP_K)
         p.add_argument("--index", help="arquivo .pt em data/index (padrão: o mais recente)")
         p.add_argument("--sources", action="store_true", help="mostra os trechos usados")
+        p.add_argument("--rerank", action=argparse.BooleanOptionalAction, default=config.RERANK,
+                       help="reordena os resultados com um cross-encoder")
 
     args = parser.parse_args()
-    rag = RAG()
+    rag = RAG(embedding_model=getattr(args, "model", config.EMBEDDING_MODEL),
+              rerank=getattr(args, "rerank", config.RERANK))
     if args.command == "build":
         cmd_build(args, rag)
         return
