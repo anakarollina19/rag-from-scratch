@@ -1,0 +1,8 @@
+PyMuPDF>=1.24
+requests>=2.31
+tqdm>=4.66
+spacy>=3.7
+sentence-transformers>=3.0
+transformers>=4.42
+torch>=2.2
+accelerate>=0.30
