@@ -30,16 +30,19 @@ def text_formatter(text: str) -> str:
     return text.replace("\n", " ").strip()
 
 
-def open_and_read_pdf(pdf_path: str, page_offset: int = 0) -> list[dict]:
+def open_and_read_pdf(pdf_path: str, page_offset: int = 0,
+                      first_page: int = 1, last_page: int | None = None) -> list[dict]:
     """Lê o PDF página por página e coleta estatísticas básicas.
 
     page_offset desconta páginas iniciais (capa, sumário...) para que a
     numeração bata com a impressa no documento. Com 0, vale a do PDF (1, 2, 3...).
+    first_page/last_page (contando do 1, inclusive) limitam o trecho do PDF lido.
     """
     doc = pymupdf.open(pdf_path)
+    last_page = min(last_page or len(doc), len(doc))
     pages = []
-    for index, page in tqdm(enumerate(doc), total=len(doc), desc="Lendo PDF"):
-        text = text_formatter(page.get_text())
+    for index in tqdm(range(first_page - 1, last_page), desc="Lendo PDF"):
+        text = text_formatter(doc[index].get_text())
         pages.append({
             "page_number": index + 1 - page_offset,
             "page_char_count": len(text),

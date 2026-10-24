@@ -38,13 +38,20 @@ class RAG:
             self._generator = Generator()
         return self._generator
 
-    def index_pdf(self, pdf_path: str, page_offset: int = 0) -> str:
-        """Lê, divide e indexa um PDF; o índice vira o ativo. Retorna o caminho do índice."""
+    def index_pdf(self, pdf_path: str, page_offset: int = 0,
+                  first_page: int = 1, last_page: int | None = None) -> str:
+        """Lê, divide e indexa um PDF (ou só um intervalo de páginas dele).
+
+        O índice vira o ativo. Retorna o caminho do índice.
+        """
         # str(): o Gradio entrega o caminho como uma subclasse de str, que o
         # torch.load (com weights_only=True) se recusa a ler de volta
         pdf_path = str(pdf_path)
-        chunks = chunk_pages(open_and_read_pdf(pdf_path, page_offset))
+        pages = open_and_read_pdf(pdf_path, page_offset, first_page, last_page)
+        chunks = chunk_pages(pages)
         path = index_path_for(pdf_path)
+        if first_page > 1 or last_page:  # um índice por intervalo, sem sobrescrever o PDF inteiro
+            path = path.replace(".pt", f"_p{first_page}-{last_page or 'fim'}.pt")
         build_index(chunks, self.embedder(self.embedding_model), path, source=pdf_path)
         self.load(path)
         return path

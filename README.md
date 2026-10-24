@@ -4,6 +4,10 @@ Pipeline de **Retrieval-Augmented Generation (RAG)** construído do zero e rodan
 
 Envie **qualquer PDF**, faça uma pergunta **em português ou inglês** e receba uma resposta do **Gemma 2B** baseada no documento, com as páginas de onde ela saiu. Pode ser usado por uma **interface web (Gradio)** ou pela linha de comando.
 
+- 📄 **Pré-visualização do PDF** e escolha de quais páginas indexar
+- 💬 **Chat** com histórico; cada resposta mostra as fontes
+- 🖨️ **Exportação** das perguntas e respostas em PDF ou HTML, ou impressão direta
+
 ![Demonstração da interface](docs/demo.gif)
 
 ## Sumário
@@ -73,13 +77,15 @@ hf auth login
 python app.py
 ```
 
-Abra **http://127.0.0.1:7860** e:
-1. envie um PDF em **"Indexar um novo PDF"** (ou escolha um já indexado);
-2. digite a pergunta e clique em **Perguntar**.
+Abra **http://127.0.0.1:7860**. A interface tem três abas:
 
-Opções da interface:
-- **Re-ranking:** liga ou desliga a segunda etapa da busca.
-- **Gerar resposta com o Gemma:** desligue para ver só os trechos encontrados, o que é instantâneo.
+| Aba | O que faz |
+|---|---|
+| 💬 **Perguntar** | Chat com o documento ativo. A cada pergunta, o chat mostra o progresso ("buscando...", "gerando...") e depois a resposta, com as **fontes** em um bloco que abre e fecha. Na lateral: trocar de documento, número de trechos, re-ranking e geração ligada/desligada. |
+| 📄 **Documentos** | Envie um PDF e veja **miniaturas das páginas** antes de indexar. Use **"Da página" / "Até a página"** para indexar só uma parte, o que é mais rápido e evita capas e anexos. Em *Avançado*: modelo de embedding e ajuste da numeração. |
+| 🖨️ **Exportar** | Escolha quais perguntas entram e se as fontes aparecem, veja a **prévia** e baixe em **PDF** ou **HTML**, ou **imprima**. |
+
+> Dica: desligue **"Gerar resposta com o Gemma"** para ver só os trechos encontrados, o que é instantâneo.
 
 ### Linha de comando
 
@@ -128,7 +134,7 @@ Na primeira execução, o Gemma (~5 GB) e os outros modelos são baixados.
 python -m unittest
 ```
 
-São 10 testes rápidos, que não baixam modelos: limpeza das respostas, montagem do prompt e métricas de avaliação.
+São 14 testes rápidos, que não baixam modelos: limpeza das respostas, montagem do prompt, métricas de avaliação, leitura por intervalo de páginas e geração do relatório em PDF.
 
 ## Avaliação
 
@@ -218,6 +224,7 @@ A correção foi uma linha: `str(pdf_path)`. O difícil foi achar a causa, lendo
 - [x] Re-ranking dos resultados com um cross-encoder
 - [x] Embeddings multilíngues, para perguntas em português
 - [x] Conjunto de avaliação, para medir a qualidade da busca
+- [x] Pré-visualização do PDF, escolha de páginas e exportação das perguntas
 - [ ] Avaliar a qualidade das respostas geradas em mais perguntas
 - [ ] Testar um LLM maior ou multilíngue (ex.: Gemma 2) para melhorar o português
 - [ ] OCR para PDFs escaneados
@@ -232,7 +239,9 @@ rag-from-scratch/
 │   ├── embeddings.py         Embedder + salvar/carregar índices
 │   ├── retrieval.py          busca vetorial + Reranker
 │   ├── generation.py         prompt + Gemma + limpeza da resposta
-│   └── pipeline.py           classe RAG (une tudo)
+│   ├── pipeline.py           classe RAG (une tudo)
+│   ├── pdf_preview.py        miniaturas das páginas do PDF
+│   └── report.py             relatório das perguntas (HTML e PDF)
 ├── eval/                   avaliação da busca
 │   ├── questions.json        22 perguntas (en/pt) com as páginas certas
 │   └── run_eval.py           calcula hit@3 e MRR@10
@@ -246,7 +255,11 @@ rag-from-scratch/
 └── requirements-dev.txt    + Playwright, só para gravar o GIF
 ```
 
-Os arquivos gerados (PDFs, índices em `data/index/` e o cache da avaliação em `data/eval_cache/`) ficam em `data/`, que não vai para o Git.
+Os arquivos gerados ficam em `data/`, que não vai para o Git:
+- PDFs;
+- índices em `data/index/`;
+- cache da avaliação em `data/eval_cache/`;
+- relatórios exportados em `data/exports/`.
 
 ## Créditos
 
