@@ -10,7 +10,7 @@ from tqdm.auto import tqdm
 from . import config
 
 
-def download_pdf(path: str = config.PDF_PATH, url: str = config.PDF_URL) -> str:
+def download_pdf(path: str = config.BOOK_PATH, url: str = config.BOOK_URL) -> str:
     """Baixa o PDF caso ainda não exista localmente."""
     if os.path.exists(path):
         print(f"[INFO] {path} já existe.")
@@ -30,14 +30,18 @@ def text_formatter(text: str) -> str:
     return text.replace("\n", " ").strip()
 
 
-def open_and_read_pdf(pdf_path: str) -> list[dict]:
-    """Lê o PDF página por página e coleta estatísticas básicas."""
+def open_and_read_pdf(pdf_path: str, page_offset: int = 0) -> list[dict]:
+    """Lê o PDF página por página e coleta estatísticas básicas.
+
+    page_offset desconta páginas iniciais (capa, sumário...) para que a
+    numeração bata com a impressa no documento. Com 0, vale a do PDF (1, 2, 3...).
+    """
     doc = pymupdf.open(pdf_path)
     pages = []
-    for page_number, page in tqdm(enumerate(doc), total=len(doc), desc="Lendo PDF"):
+    for index, page in tqdm(enumerate(doc), total=len(doc), desc="Lendo PDF"):
         text = text_formatter(page.get_text())
         pages.append({
-            "page_number": page_number - config.PAGE_OFFSET,
+            "page_number": index + 1 - page_offset,
             "page_char_count": len(text),
             "page_word_count": len(text.split(" ")),
             "page_token_count": len(text) / 4,  # ~4 caracteres por token

@@ -4,3 +4,5 @@ __pycache__/
 venv/
 data/
 .ipynb_checkpoints/
+.claude/
+.gradio/

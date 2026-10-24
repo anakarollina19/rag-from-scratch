@@ -2,7 +2,7 @@
 
 Pipeline de **Retrieval-Augmented Generation (RAG)** construído do zero e rodando 100% local: sem LangChain, sem banco vetorial, sem API paga.
 
-O sistema lê um livro de nutrição em PDF (~1200 páginas, licença aberta), cria embeddings dos trechos e responde perguntas usando o **Gemma 2B** com base no conteúdo encontrado, mostrando as páginas de onde tirou a resposta.
+Funciona com **qualquer PDF**: o sistema lê o documento, cria embeddings dos trechos e responde perguntas usando o **Gemma 2B** com base no conteúdo encontrado, mostrando as páginas de onde tirou a resposta. Pode ser usado pela **interface web (Gradio)** ou pela linha de comando. Como exemplo, o projeto vem configurado com um livro de nutrição de licença aberta (~1200 páginas).
 
 ## Exemplo
 
@@ -38,8 +38,9 @@ Pergunta ──► embedding ──► similaridade (dot product) ◄── embe
 | 2. Embeddings | `rag/embeddings.py` | Gera vetores de 768 dimensões com `sentence-transformers` e salva em `data/embeddings.pt` |
 | 3. Busca | `rag/retrieval.py` | Calcula o produto escalar entre a pergunta e os chunks e retorna os top-k |
 | 4. Geração | `rag/generation.py` | Monta o prompt com o contexto, gera a resposta com o Gemma e limpa frases de abertura |
+| Tudo junto | `rag/pipeline.py` | Classe `RAG` que une as etapas; usada pela CLI (`main.py`) e pela interface web (`app.py`) |
 
-Os principais parâmetros (modelos, tamanho dos chunks, `TOP_K`) ficam em `rag/config.py`.
+Os principais parâmetros (modelos, tamanho dos chunks, `TOP_K`) ficam em `rag/config.py`. Cada PDF indexado vira um arquivo em `data/index/`, então dá para alternar entre documentos sem reprocessar.
 
 ## Instalação
 
@@ -63,13 +64,31 @@ hf auth login
 
 ## Uso
 
+### Interface web
+
 ```bash
-python main.py build                                       # baixa o PDF e cria o índice (uma vez)
+python app.py
+```
+
+Abra **http://127.0.0.1:7860** no navegador e:
+1. envie um PDF em **"Indexar um novo PDF"** (ou escolha um já indexado);
+2. digite a pergunta e clique em **Perguntar**.
+
+A resposta aparece com os trechos e as páginas usadas. Desmarque **"Gerar resposta com o Gemma"** para ver só o resultado da busca, que é instantâneo.
+
+### Linha de comando
+
+```bash
+python main.py build                                       # indexa o livro de exemplo (baixa o PDF)
+python main.py build meu-arquivo.pdf                       # indexa qualquer PDF
+python main.py build livro.pdf --page-offset 12            # desconta 12 páginas iniciais (capa, sumário...)
 python main.py search "macronutrients functions"           # só a busca semântica
 python main.py ask "How does saliva help with digestion?" --sources
 python main.py chat                                        # modo interativo
 python -m unittest                                         # testes (não baixam modelos)
 ```
+
+`search`, `ask` e `chat` usam o PDF indexado mais recentemente. Para escolher outro, use `--index data/index/<nome>.pt`.
 
 **Tempos medidos em CPU (sem GPU):**
 
@@ -96,7 +115,10 @@ Com 5 trechos (`TOP_K=5`), a pergunta sobre saliva ainda falhava; com 3, funcion
 **3. Sem sorteio, as respostas ficam previsíveis.**
 Com `temperature=0.7`, o modelo sorteia as palavras e pode responder de jeitos diferentes a cada vez. Com *greedy decoding* (`do_sample=False`), ele sempre escolhe a palavra mais provável, e as respostas ficam estáveis e reproduzíveis.
 
-**4. Bugs do notebook original corrigidos:**
+**4. Integrações escondem detalhes de tipo.**
+Ao enviar um PDF pela interface, o índice era salvo, mas não podia ser lido de volta. O Gradio entrega o caminho do arquivo como uma *subclasse* de `str`, e esse objeto ia parar dentro do arquivo `.pt`. Por segurança, o `torch.load` só aceita tipos básicos (`weights_only=True`) e recusava a leitura. A correção foi uma linha (`str(pdf_path)`); o difícil foi achar a causa, lendo o *traceback* até o fim.
+
+**5. Bugs do notebook original corrigidos:**
 - regex `\.(A-Z)` → `\.([A-Z])`;
 - sentenças unidas sem espaço;
 - `import numpy` faltando;
@@ -106,13 +128,15 @@ Com `temperature=0.7`, o modelo sorteia as palavras e pode responder de jeitos d
 ## Limitações
 
 - **Idioma:** só funciona bem com perguntas em inglês, porque o livro e o modelo de embeddings são em inglês.
-- **Documento fixo:** o índice é feito para um único PDF (configurado em `rag/config.py`).
+- **Um documento por vez:** cada pergunta é feita sobre um único PDF, não sobre vários juntos.
+- **PDFs escaneados:** PDFs que são só imagens (sem texto selecionável) não funcionam, porque não há OCR.
 - **Respostas imperfeitas:** o Gemma 2B é pequeno e às vezes ainda diz que o contexto não tem a informação.
 
 ## Próximos passos
 
-- [ ] Aceitar qualquer PDF pela linha de comando
-- [ ] Interface web com Gradio
+- [x] Aceitar qualquer PDF
+- [x] Interface web com Gradio
+- [ ] GIF da interface no topo do README
 - [ ] Re-ranking dos resultados com um cross-encoder
 - [ ] Embeddings multilíngues, para perguntas em português
 - [ ] Conjunto de avaliação, para medir a qualidade das respostas
