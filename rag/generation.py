@@ -1,4 +1,6 @@
 """Etapa 4: montar o prompt com o contexto e gerar a resposta com o LLM."""
+import re
+
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -11,6 +13,21 @@ BASE_PROMPT = """Context:
 
 Using the context above, answer the question in a clear and explanatory way.
 Question: {query}"""
+
+
+# Frases de abertura que o Gemma costuma colocar antes da resposta,
+# ex.: "Sure, here's the answer to the question:" ou "According to the context,"
+PREAMBLE = re.compile(
+    r"^\s*(?:(?:sure|okay|certainly)[,!.]?\s*here(?:'s| is)[^\n:]*:\s*"
+    r"|according to the (?:context|passage)(?: provided| above)?,\s*)",
+    re.IGNORECASE,
+)
+
+
+def clean_answer(text: str) -> str:
+    """Remove a frase de abertura e deixa a primeira letra maiúscula."""
+    text = PREAMBLE.sub("", text.strip()).strip()
+    return text[:1].upper() + text[1:]
 
 
 def prompt_formatter(query: str, context_items: list[dict]) -> str:
@@ -36,4 +53,4 @@ class Generator:
             output = self.model.generate(**inputs, max_new_tokens=max_new_tokens,
                                          do_sample=False)
         new_tokens = output[0][inputs["input_ids"].shape[1]:]
-        return self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+        return clean_answer(self.tokenizer.decode(new_tokens, skip_special_tokens=True))
