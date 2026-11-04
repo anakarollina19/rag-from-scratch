@@ -89,16 +89,20 @@ def silhouette(x: torch.Tensor, labels: torch.Tensor, max_points: int = 1500) ->
     if len(x) > max_points:  # amostra para não montar uma matriz gigante
         idx = torch.randperm(len(x), generator=torch.Generator().manual_seed(0))[:max_points]
         x, labels = x[idx], labels[idx]
-    d = torch.cdist(x, x)
-    scores = []
-    for i in range(len(x)):
-        same = labels == labels[i]
-        if same.sum() <= 1:
-            continue
-        a = d[i][same].sum() / (same.sum() - 1)
-        b = min(d[i][labels == j].mean() for j in labels.unique() if j != labels[i])
-        scores.append(((b - a) / max(a, b)).item())
-    return sum(scores) / len(scores) if scores else 0.0
+    _, labels = labels.unique(return_inverse=True)  # rótulos 0..k-1
+    onehot = torch.nn.functional.one_hot(labels).float()       # (n, k)
+    sizes = onehot.sum(dim=0)                                  # pontos por grupo
+    if len(sizes) < 2:
+        return 0.0
+    # soma das distâncias de cada ponto a cada grupo, tudo de uma vez: (n, n) @ (n, k)
+    dist_sum = torch.cdist(x, x) @ onehot
+    own = sizes[labels]
+    a = dist_sum.gather(1, labels[:, None]).squeeze(1) / (own - 1).clamp(min=1)
+    mean_other = (dist_sum / sizes).scatter(1, labels[:, None], float("inf"))
+    b = mean_other.min(dim=1).values
+    s = (b - a) / torch.maximum(a, b)
+    s = s[own > 1]  # por convenção, pontos sozinhos no grupo não entram
+    return s.mean().item() if len(s) else 0.0
 
 
 def best_k(x: torch.Tensor, k_range=range(2, 9)) -> tuple[int, dict[int, float]]:

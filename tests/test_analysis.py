@@ -3,7 +3,7 @@ import unittest
 
 import torch
 
-from rag.analysis import best_k, cluster_names, describe, kmeans, pca_2d, top_terms
+from rag.analysis import best_k, cluster_names, describe, kmeans, pca_2d, silhouette, top_terms
 
 
 def blobs():
@@ -22,6 +22,13 @@ class AnalysisTest(unittest.TestCase):
 
     def test_best_k_is_three(self):
         self.assertEqual(best_k(blobs(), range(2, 6))[0], 3)
+
+    def test_silhouette_matches_definition(self):
+        # 4 pontos na reta: grupos {0, 1} e {10, 11}
+        x = torch.tensor([[0.], [1.], [10.], [11.]])
+        # ponto 0: a = 1, b = média(10, 11) = 10,5 -> s = 9,5/10,5 (os outros são simétricos)
+        expected = ((9.5 / 10.5) + (8.5 / 9.5)) / 2
+        self.assertAlmostEqual(silhouette(x, torch.tensor([0, 0, 1, 1])), expected, places=5)
 
     def test_pca_shape_and_variance(self):
         points, variance = pca_2d(blobs())

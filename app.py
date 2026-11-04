@@ -242,6 +242,8 @@ def suggest_questions():
     text = rag.generator.generate(prompt, max_new_tokens=120)
     lines = [re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", l).strip() for l in text.splitlines()]
     questions = [l for l in lines if l.endswith("?")][:3]
+    if not questions:
+        gr.Warning("A IA não gerou perguntas desta vez. Tente de novo.")
     questions += [""] * (3 - len(questions))
     return [gr.update(value=q, visible=bool(q)) for q in questions]
 
@@ -409,7 +411,7 @@ with gr.Blocks(title="RAG from Scratch") as demo:
         with gr.Tab("💬 Perguntar", id="ask"):
             with gr.Row(equal_height=False):
                 with gr.Column(scale=3):
-                    mode = gr.Radio(MODES, value=MODES[0], show_label=False,
+                    mode = gr.Radio(MODES, value=MODES[0], label="Modo",
                                     info="RAG: busca e responde direto · Agente: o LLM decide "
                                          "quais ferramentas usar (buscar, ler página, comparar "
                                          "documentos, calcular)")
