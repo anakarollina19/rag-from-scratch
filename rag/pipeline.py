@@ -1,6 +1,8 @@
 """Junta as 4 etapas num objeto só, usado pela CLI (main.py) e pela interface web (app.py)."""
+import os
+
 from . import config
-from .embeddings import Embedder, build_index, index_path_for, load_index
+from .embeddings import Embedder, build_index, index_path_for, list_indexes, load_index
 from .ingest import chunk_pages, open_and_read_pdf
 from .retrieval import Reranker, retrieve
 
@@ -15,6 +17,7 @@ class RAG:
         self._embedders: dict[str, Embedder] = {}
         self._reranker = None
         self._generator = None
+        self._index_cache: dict[str, tuple] = {}  # usado pelo search_all
         self.chunks: list[dict] = []
         self.embeddings = None
         self.index_path = ""
@@ -69,6 +72,22 @@ class RAG:
         scores, indices = retrieve(query, self.embedder(self.index_model), self.embeddings, n)
         found = [{**self.chunks[i], "score": float(s)} for s, i in zip(scores, indices)]
         return self.reranker.rerank(query, found, k) if self.rerank else found
+
+    def search_all(self, query: str, k: int = config.TOP_K) -> list[dict]:
+        """Busca em todos os índices; cada trecho vem com o nome do documento."""
+        found = []
+        for path in list_indexes():
+            if path not in self._index_cache:
+                self._index_cache[path] = load_index(path)
+            chunks, embeddings, model = self._index_cache[path]
+            scores, indices = retrieve(query, self.embedder(model), embeddings, k)
+            name = os.path.splitext(os.path.basename(path))[0]
+            found += [{**chunks[i], "score": float(s), "document": name}
+                      for s, i in zip(scores, indices)]
+        # scores de modelos diferentes não são comparáveis: o cross-encoder decide
+        if self.rerank and found:
+            return self.reranker.rerank(query, found, k)
+        return sorted(found, key=lambda c: c["score"], reverse=True)[:k]
 
     def ask(self, query: str, k: int = config.TOP_K) -> tuple[str, list[dict]]:
         """Busca + geração. Retorna (resposta, trechos usados)."""

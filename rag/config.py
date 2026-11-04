@@ -30,4 +30,10 @@ LLM_MODEL = "google/gemma-2b-it"
 MAX_NEW_TOKENS = 512
 TOP_K = 3  # mais trechos = mais contexto, mas o Gemma 2B se perde com prompts longos
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+# Agente (rag/agent.py): no máximo AGENT_MAX_STEPS chamadas de ferramenta por pergunta.
+# Para o agente, um modelo maior segue melhor o formato Thought/Action. Para usar
+# outro, troque LLM_MODEL, ex.: "Qwen/Qwen2.5-3B-Instruct" (multilíngue e sem licença controlada)
+AGENT_MAX_STEPS = 3
+AGENT_STEP_TOKENS = 200
+
+DEVICE ="cuda" if torch.cuda.is_available() else "cpu"

@@ -7,3 +7,4 @@ transformers>=4.42
 torch>=2.2
 accelerate>=0.30
 gradio>=5.0
+pandas>=2.0

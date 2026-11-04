@@ -4,15 +4,32 @@ Pipeline de **Retrieval-Augmented Generation (RAG)** construído do zero e rodan
 
 Envie **qualquer PDF**, faça uma pergunta **em português ou inglês** e receba uma resposta do **Gemma 2B** baseada no documento, com as páginas de onde ela saiu. Pode ser usado por uma **interface web (Gradio)** ou pela linha de comando.
 
+- 🤖 **Modo agente (ReAct):** o LLM decide sozinho quais ferramentas usar (buscar, ler uma página, comparar documentos, calcular). O raciocínio aparece passo a passo no chat
+- 📊 **Análise exploratória:** estatísticas, termos frequentes, mapa dos embeddings (PCA) e temas (K-means com silhueta), tudo em PyTorch
+- ✨ **Perguntas sugeridas pela IA** a partir do próprio documento
 - 📄 **Pré-visualização do PDF** e escolha de quais páginas indexar
-- 💬 **Chat** com histórico; cada resposta mostra as fontes
+- 💬 **Chat** com histórico, linha do tempo das etapas do RAG e fontes com nota de relevância
 - 🖨️ **Exportação** das perguntas e respostas em PDF ou HTML, ou impressão direta
 
 ![Demonstração da interface](docs/demo.gif)
 
+## Competências demonstradas
+
+| Ciência de dados (base) | LLMs e agentes (temas atuais) |
+|---|---|
+| Pré-processamento de texto (extração, segmentação em sentenças, chunking) | RAG completo, sem frameworks |
+| Estatística descritiva dos trechos | Embeddings multilíngues e busca vetorial |
+| Redução de dimensionalidade: **PCA** via SVD, implementado do zero | Re-ranking com cross-encoder |
+| Clusterização: **K-means++** e **coeficiente de silhueta**, implementados do zero | Engenharia de prompt para modelos pequenos |
+| **TF-IDF** para nomear os temas encontrados | **Agente ReAct** com ferramentas e salvaguardas |
+| Avaliação com métricas (**hit@k, MRR**) e comparação de modelos | Geração local com LLM (Gemma), sem API paga |
+| Testes automatizados | Interface interativa (Gradio) |
+
 ## Sumário
 
 - [Como funciona](#como-funciona)
+- [Modo agente](#modo-agente)
+- [Análise do documento](#análise-do-documento)
 - [Instalação](#instalação)
 - [Uso](#uso)
 - [Avaliação](#avaliação)
@@ -49,6 +66,52 @@ Pergunta ──► embedding ──► 20 trechos mais parecidos (produto escala
 - O **modelo de embedding** compara vetores calculados *separadamente* para a pergunta e para cada trecho. É muito rápido (~35 ms para 1680 trechos), mas às vezes impreciso.
 - O **cross-encoder** lê pergunta e trecho *juntos*, como um leitor faria. É mais preciso, mas lento, por isso só olha os 20 candidatos da primeira etapa.
 
+## Modo agente
+
+No modo **⚡ RAG** o caminho é fixo: busca, re-ranking e resposta. No modo **🤖 Agente** ([rag/agent.py](rag/agent.py)), o LLM segue o padrão **ReAct** (*Reason + Act*): pensa, escolhe uma ferramenta, lê o resultado e repete até ter a resposta.
+
+```
+Pergunta: "Compare o que os dois livros dizem sobre vitamina D"
+Thought: preciso buscar nos dois documentos
+Action: search_all[vitamin D]
+Observation: (nutricao, p. 531) ... (fisiologia, p. 88) ...
+Thought: I know the answer
+Final Answer: ... (p. 531) ... (p. 88)
+```
+
+| Ferramenta | O que faz |
+|---|---|
+| `search` | busca no documento ativo (com re-ranking) |
+| `search_all` | busca em **todos** os documentos indexados, para comparar |
+| `read_page` | lê uma página específica |
+| `calculator` | faz contas com segurança (lê a expressão com `ast`, sem `eval`) |
+
+Foi feito do zero, sem LangChain: o protocolo é só texto, lido com regex. Modelos pequenos às vezes saem do formato, então o agente tem salvaguardas:
+- se o modelo não chamar nenhuma ferramenta válida, ele busca no documento;
+- ele ignora Observations que o próprio modelo "inventa";
+- se os passos acabarem, ele responde com o que já foi observado.
+
+Os testes ([tests/test_agent.py](tests/test_agent.py)) usam um LLM falso com respostas pré-definidas, então rodam sem baixar modelos.
+
+> Para o agente, um LLM maior segue melhor o formato. Para usar outro modelo, troque `LLM_MODEL` em [rag/config.py](rag/config.py), por exemplo para `Qwen/Qwen2.5-3B-Instruct`, que é multilíngue e não exige aceitar licença.
+
+## Análise do documento
+
+A aba **📊 Análise** ([rag/analysis.py](rag/analysis.py)) trata os trechos do PDF como um conjunto de dados:
+
+| Técnica | Para quê |
+|---|---|
+| Estatística descritiva | tamanho dos trechos (média, desvio, mediana), páginas com texto |
+| Frequência de termos | palavras mais comuns (sem stopwords em PT e EN) |
+| **PCA** (SVD da matriz centralizada) | projeta os embeddings de 768 dimensões em 2D; mostra a variância explicada |
+| **K-means++** | agrupa os trechos por tema |
+| **Silhueta** | escolhe o número de temas automaticamente (k de 2 a 8) |
+| **TF-IDF** por grupo | dá nome a cada tema pelos termos mais característicos dele |
+
+No mapa, os trechos usados para responder a **última pergunta** aparecem destacados (★). Assim dá para ver de que "região" do documento a resposta veio.
+
+Tudo foi implementado em PyTorch, sem scikit-learn, e testado com dados sintéticos de grupos conhecidos ([tests/test_analysis.py](tests/test_analysis.py)).
+
 ## Instalação
 
 Requer Python 3.10+.
@@ -77,11 +140,12 @@ hf auth login
 python app.py
 ```
 
-Abra **http://127.0.0.1:7860**. A interface tem três abas:
+Abra **http://127.0.0.1:7860**. A interface tem quatro abas (e um botão 🌓 para alternar entre tema claro e escuro):
 
 | Aba | O que faz |
 |---|---|
-| 💬 **Perguntar** | Chat com o documento ativo. A cada pergunta, o chat mostra o progresso ("buscando...", "gerando...") e depois a resposta, com as **fontes** em um bloco que abre e fecha. Na lateral: trocar de documento, número de trechos, re-ranking e geração ligada/desligada. |
+| 💬 **Perguntar** | Chat com o documento ativo, no modo **RAG** ou **Agente**. Uma linha do tempo mostra cada etapa (busca → re-ranking → prompt → geração) com o tempo gasto. As **fontes** aparecem com uma barra de relevância. Na lateral: trocar de documento, **perguntas sugeridas pela IA**, número de trechos, re-ranking e geração ligada/desligada. |
+| 📊 **Análise** | Estatísticas, termos frequentes, mapa semântico (PCA) e temas (K-means). |
 | 📄 **Documentos** | Envie um PDF e veja **miniaturas das páginas** antes de indexar. Use **"Da página" / "Até a página"** para indexar só uma parte, o que é mais rápido e evita capas e anexos. Em *Avançado*: modelo de embedding e ajuste da numeração. |
 | 🖨️ **Exportar** | Escolha quais perguntas entram e se as fontes aparecem, veja a **prévia** e baixe em **PDF** ou **HTML**, ou **imprima**. |
 
@@ -134,7 +198,12 @@ Na primeira execução, o Gemma (~5 GB) e os outros modelos são baixados.
 python -m unittest
 ```
 
-São 14 testes rápidos, que não baixam modelos: limpeza das respostas, montagem do prompt, métricas de avaliação, leitura por intervalo de páginas e geração do relatório em PDF.
+São testes rápidos, que não baixam modelos. Eles cobrem:
+- limpeza das respostas e montagem do prompt;
+- métricas de avaliação;
+- leitura por intervalo de páginas e geração do relatório em PDF;
+- o laço do agente, com um LLM falso;
+- PCA, K-means e silhueta, com dados sintéticos.
 
 ## Avaliação
 
@@ -212,7 +281,8 @@ A correção foi uma linha: `str(pdf_path)`. O difícil foi achar a causa, lendo
 
 - **Português do Gemma 2B:** a busca funciona bem em português, mas o Gemma 2B escreve português de forma fraca, misturando palavras em inglês ("Colostro é a milk produzida...").
 - **Recusas:** com alguns trechos, o Gemma ainda responde que "o contexto não tem a informação". Exemplo: "How does saliva help with digestion?" com re-ranking.
-- **Um documento por vez:** não dá para perguntar sobre vários PDFs juntos.
+- **Vários documentos só no modo agente:** a ferramenta `search_all` busca em todos os PDFs; o modo RAG usa um documento por vez.
+- **Agente com modelo pequeno:** o Gemma 2B nem sempre segue o formato Thought/Action. As salvaguardas evitam travamentos, mas um modelo de 3B ou mais toma decisões melhores. Cada passo do agente é uma chamada ao LLM, por isso esse modo é mais lento na CPU.
 - **PDFs escaneados:** PDFs que são só imagem não funcionam, porque não há OCR.
 - **Avaliação pequena:** são 22 perguntas sobre um único livro, e a geração foi comparada em apenas 4.
 
@@ -225,6 +295,9 @@ A correção foi uma linha: `str(pdf_path)`. O difícil foi achar a causa, lendo
 - [x] Embeddings multilíngues, para perguntas em português
 - [x] Conjunto de avaliação, para medir a qualidade da busca
 - [x] Pré-visualização do PDF, escolha de páginas e exportação das perguntas
+- [x] Agente ReAct com ferramentas (busca, leitura de página, vários documentos, calculadora)
+- [x] Análise exploratória: PCA, K-means, silhueta e TF-IDF
+- [ ] Avaliar o agente no conjunto de perguntas e comparar com o RAG direto
 - [ ] Avaliar a qualidade das respostas geradas em mais perguntas
 - [ ] Testar um LLM maior ou multilíngue (ex.: Gemma 2) para melhorar o português
 - [ ] OCR para PDFs escaneados
@@ -240,6 +313,8 @@ rag-from-scratch/
 │   ├── retrieval.py          busca vetorial + Reranker
 │   ├── generation.py         prompt + Gemma + limpeza da resposta
 │   ├── pipeline.py           classe RAG (une tudo)
+│   ├── agent.py              agente ReAct + ferramentas
+│   ├── analysis.py           PCA, K-means, silhueta, TF-IDF
 │   ├── pdf_preview.py        miniaturas das páginas do PDF
 │   └── report.py             relatório das perguntas (HTML e PDF)
 ├── eval/                   avaliação da busca
